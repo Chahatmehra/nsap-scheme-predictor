@@ -72,4 +72,4 @@ The generated classification pipelines were ranked dynamically by their optimize
 3. **Predictive Vulnerability Mapping:** Analyze historic trend anomalies over time to forecast future welfare demands and set up proactive enrollment camps.
 4. **Explainable AI (XAI):** Integrate SHAP/LIME frameworks to output exact plain-text justifications for every prediction to support transparent auditing.
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+Check out the working of the model at https://huggingface.co/spaces/PHOENIXREBORNAGAIN/nsap_scheme_proj
