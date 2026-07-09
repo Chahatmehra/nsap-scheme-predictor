@@ -2,8 +2,7 @@ import os
 import requests
 import streamlit as st
 
-# ── Configuration (Set these as secrets/environment variables) ──────────
-# In Streamlit, you can use st.secrets["IBM_API_KEY"] or os.environ
+# ── Configuration (Fetched from Space Environment Secrets) ──────────
 IBM_API_KEY = os.environ.get("IBM_API_KEY")           
 DEPLOYMENT_ID = os.environ.get("DEPLOYMENT_ID", "019f0900-2d1a-73af-8b39-df79761f6bd9")
 SPACE_ID = os.environ.get("SPACE_ID", "b762b7f8-ba30-4d3a-89a6-b7c14f840166")
@@ -12,6 +11,7 @@ REGION_URL = os.environ.get("REGION_URL", "https://eu-de.ml.cloud.ibm.com")
 IAM_TOKEN_URL = "https://iam.cloud.ibm.com/identity/token"
 SCORING_URL = f"{REGION_URL}/ml/v4/deployments/{DEPLOYMENT_ID}/predictions?version=2021-05-01"
 
+# The 15 strict schema features expected by your trained IBM AutoAI pipeline
 FIELDS = [
     "finyear", "lgdstatecode", "statename", "lgddistrictcode", "districtname",
     "totalbeneficiaries", "totalmale", "totalfemale", "totaltransgender",
@@ -20,6 +20,7 @@ FIELDS = [
 
 
 def get_iam_token(api_key: str) -> str:
+    """Generates a transient OAuth access token via IBM Cloud IAM."""
     resp = requests.post(
         IAM_TOKEN_URL,
         data={
@@ -34,13 +35,14 @@ def get_iam_token(api_key: str) -> str:
 
 
 def predict_scheme(values):
+    """Sends the 15-column feature matrix payload to the IBM Machine Learning scoring endpoint."""
     if not IBM_API_KEY:
-        return "⚠️ Server misconfigured: IBM_API_KEY secret not set.", "error"
+        return "⚠️ Server misconfigured: IBM_API_KEY secret not found in Space Settings.", "error"
 
     try:
         token = get_iam_token(IBM_API_KEY)
     except Exception as e:
-        return f"Error getting IAM token: {e}", "error"
+        return f"Error authenticating with IBM IAM: {e}", "error"
 
     payload = {
         "input_data": [
@@ -60,18 +62,21 @@ def predict_scheme(values):
         resp = requests.post(SCORING_URL, json=payload, headers=headers, timeout=30)
         resp.raise_for_status()
         result = resp.json()
+        
+        # Parse the prediction record array
         prediction = result["predictions"][0]["values"][0]
         scheme_code = prediction[0]
         
+        # Safely extract probability metrics if present in output node
         confidence = None
         if len(prediction) > 1 and isinstance(prediction[1], list):
             confidence = max(prediction[1]) * 100
             
         if confidence is not None:
-            return f"Predicted Scheme: **{scheme_code}** (confidence: {confidence:.1f}%)", "success"
+            return f"Predicted Scheme: **{scheme_code}** (Confidence: {confidence:.1f}%)", "success"
         return f"Predicted Scheme: **{scheme_code}**", "success"
     except Exception as e:
-        return f"Error calling scoring endpoint: {e}\n\nResponse: {getattr(resp, 'text', '')}", "error"
+        return f"Error calling scoring endpoint: {e}\n\nDetails: {getattr(resp, 'text', '')}", "error"
 
 
 # ── Streamlit UI Setup ──────────────────────────────────────────────────────
@@ -86,49 +91,52 @@ st.markdown(
 )
 st.divider()
 
-# Create forms/columns for cleaner input organization
-st.subheader("📋 Enter Applicant & Regional Aggregate Data")
+# High-impact core parameters input layout
+st.subheader("📋 Enter Core Structural Data")
 
 col1, col2, col3 = st.columns(3)
 with col1:
     finyear = st.text_input("Financial Year", placeholder="e.g. 2023-24")
     lgddistrictcode = st.number_input("LGD District Code", step=1, value=0)
-    totalmale = st.number_input("Total Male", step=1, value=0)
-    totalst = st.number_input("Total ST", step=1, value=0)
-    totalaadhaar = st.number_input("Total Aadhaar-linked", step=1, value=0)
 
 with col2:
     lgdstatecode = st.number_input("LGD State Code", step=1, value=0)
     districtname = st.text_input("District Name")
-    totalfemale = st.number_input("Total Female", step=1, value=0)
-    totalgen = st.number_input("Total General", step=1, value=0)
-    totalmobilenumber = st.number_input("Total Mobile-linked", step=1, value=0)
 
 with col3:
     statename = st.text_input("State Name")
     totalbeneficiaries = st.number_input("Total Beneficiaries", step=1, value=0)
-    totaltransgender = st.number_input("Total Transgender", step=1, value=0)
-    totalsc = st.number_input("Total SC", step=1, value=0)
-    totalobc = st.number_input("Total OBC", step=1, value=0)
 
-st.write("") # Spacer
+st.write("") # Structural layout spacer
 
 if st.button("Predict Scheme", type="primary", use_container_width=True):
     if not finyear.strip() or not statename.strip() or not districtname.strip():
-        st.warning("⚠️ Please fill in all text fields (Financial Year, State Name, District Name).")
+        st.warning("⚠️ High-priority text fields (Financial Year, State Name, District Name) cannot be blank.")
     else:
-        # Array creation in the strict order required by fields
+        # Array matching the exact schema index. Extraneous features are silently padded with 0.
         input_values = [
-            finyear.strip(), int(lgdstatecode), statename.strip(), int(lgddistrictcode), districtname.strip(),
-            int(totalbeneficiaries), int(totalmale), int(totalfemale), int(totaltransgender),
-            int(totalsc), int(totalst), int(totalgen), int(totalobc),
-            int(totalaadhaar), int(totalmobilenumber)
+            finyear.strip(),          # finyear
+            int(lgdstatecode),         # lgdstatecode
+            statename.strip(),        # statename
+            int(lgddistrictcode),      # lgddistrictcode
+            districtname.strip(),      # districtname
+            int(totalbeneficiaries),   # totalbeneficiaries
+            0,                        # totalmale (Hidden fallback)
+            0,                        # totalfemale (Hidden fallback)
+            0,                        # totaltransgender (Hidden fallback)
+            0,                        # totalsc (Hidden fallback)
+            0,                        # totalst (Hidden fallback)
+            0,                        # totalgen (Hidden fallback)
+            0,                        # totalobc (Hidden fallback)
+            0,                        # totalaadhaar (Hidden fallback)
+            0                         # totalmpbilenumber (Hidden fallback with correct schema spelling)
         ]
         
-        with st.spinner("Calling IBM Watson AutoAI Engine..."):
+        with st.spinner("Processing through Snap Decision Tree Engine..."):
             message, msg_type = predict_scheme(input_values)
             
         if msg_type == "success":
             st.success(message)
         else:
             st.error(message)
+
